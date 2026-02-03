@@ -63,6 +63,8 @@ export CODEX_CLI_PATH=/usr/local/bin/codex
 ./dist/Codex-1.0.0.AppImage
 ```
 
+- On WSL, ensure `CODEX_CLI_PATH` points to a Linux `codex` binary (not `codex.exe` or `.cmd` from Windows). If you installed the CLI via `npm i -g @openai/codex` inside WSL, the bundler will also search the npm global install for the Linux binary.
+
 ## Details
 
 The scripts will:
