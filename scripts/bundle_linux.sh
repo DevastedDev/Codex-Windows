@@ -222,25 +222,39 @@ else
 fi
 
 # ---------------------------
-# Fix workspace: protocol in package.json (not supported by npm)
+# Fix workspace: protocol and remove macOS-specific packages
 # ---------------------------
-log "Checking for workspace: protocol in package.json..."
+log "Checking for workspace: protocol and macOS-specific packages in package.json..."
 cd "$APP_DIR"
 
-if grep -q '"workspace:' package.json; then
-    log "Removing workspace: dependencies (internal packages not on npm)..."
+if grep -q '"workspace:' package.json || grep -q 'electron-liquid-glass' package.json; then
+    log "Cleaning package.json for Linux build..."
     node - <<'NODESCRIPT'
 const fs = require("fs");
 const path = require("path");
 const pkgPath = process.cwd() + "/package.json";
 const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
 
-function removeWorkspace(deps, depType) {
+// List of macOS-specific packages to remove
+const macosPackages = [
+    'electron-liquid-glass',
+    'node-mac-permissions',
+    'macos-notification-state'
+];
+
+function cleanDeps(deps, depType) {
     if (!deps) return;
     const removed = [];
     for (const [name, version] of Object.entries(deps)) {
+        // Remove workspace dependencies
         if (version.startsWith("workspace:")) {
             console.log(`Removing ${depType} ${name}: ${version} (internal workspace package)`);
+            delete deps[name];
+            removed.push(name);
+        }
+        // Remove macOS-specific packages
+        else if (macosPackages.includes(name)) {
+            console.log(`Removing ${depType} ${name}: ${version} (macOS-only package)`);
             delete deps[name];
             removed.push(name);
         }
@@ -248,13 +262,13 @@ function removeWorkspace(deps, depType) {
     return removed;
 }
 
-const removedDeps = removeWorkspace(pkg.dependencies, "dependency");
-const removedDevDeps = removeWorkspace(pkg.devDependencies, "devDependency");
-const removedOptDeps = removeWorkspace(pkg.optionalDependencies, "optionalDependency");
-const removedPeerDeps = removeWorkspace(pkg.peerDependencies, "peerDependency");
+cleanDeps(pkg.dependencies, "dependency");
+cleanDeps(pkg.devDependencies, "devDependency");
+cleanDeps(pkg.optionalDependencies, "optionalDependency");
+cleanDeps(pkg.peerDependencies, "peerDependency");
 
 fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
-console.log("Workspace dependencies removed.");
+console.log("Package.json cleaned for Linux build.");
 NODESCRIPT
 fi
 
@@ -266,7 +280,8 @@ log "Installing electron in app directory..."
 # Add electron as devDependency if not already present
 if ! grep -q '"electron"' package.json 2>/dev/null || ! [ -d "node_modules/electron" ]; then
     log "Adding electron@$ELECTRON_VERSION to app..."
-    npm install --save-dev electron@"$ELECTRON_VERSION" --legacy-peer-deps
+    # Use --omit=optional to skip optional deps that might be platform-specific
+    npm install --save-dev electron@"$ELECTRON_VERSION" --legacy-peer-deps --omit=optional
 fi
 
 cd "$ROOT_DIR"
