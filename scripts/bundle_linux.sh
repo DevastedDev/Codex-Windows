@@ -283,6 +283,16 @@ elif command -v codex &> /dev/null; then
     CODEX_CLI_SOURCE="$(command -v codex)"
 fi
 
+if [ -n "$CODEX_CLI_SOURCE" ]; then
+    if [ -d "$CODEX_CLI_SOURCE" ]; then
+        CODEX_CLI_SOURCE="$CODEX_CLI_SOURCE/codex"
+    fi
+
+    if command -v realpath &> /dev/null; then
+        CODEX_CLI_SOURCE="$(realpath -m "$CODEX_CLI_SOURCE")"
+    fi
+fi
+
 CODEX_RESOURCES_DIR=""
 if [ -n "$CODEX_CLI_SOURCE" ]; then
     if [ -f "$CODEX_CLI_SOURCE" ]; then
@@ -293,6 +303,7 @@ if [ -n "$CODEX_CLI_SOURCE" ]; then
         log "Bundling Codex CLI from $CODEX_CLI_SOURCE"
     else
         warn "CODEX_CLI_PATH was set but not found at $CODEX_CLI_SOURCE"
+        warn "Tip: use an absolute path to the codex binary, e.g. /usr/local/bin/codex."
     fi
 else
     warn "Codex CLI not found in PATH and CODEX_CLI_PATH not set; AppImage will require CODEX_CLI_PATH at runtime."
