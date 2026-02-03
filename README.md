@@ -1,15 +1,24 @@
-# Codex DMG -> Windows
+# Codex DMG -> Windows / Linux
 
-This repository provides a **Windows-only runner** that extracts the macOS Codex DMG and runs the Electron app on Windows. It unpacks `app.asar`, swaps mac-only native modules for Windows builds, and launches the app with a compatible Electron runtime. It **does not** ship OpenAI binaries or assets; you must supply your own DMG and install the Codex CLI.
+This repository provides tools to extract the macOS Codex DMG and run the Electron app on Windows or bundle it as an AppImage for Linux. It unpacks `app.asar`, swaps native modules, and launches/packages the app. It **does not** ship OpenAI binaries or assets; you must supply your own DMG and install the Codex CLI.
 
 ## Requirements
+
+### Windows
 - Windows 10/11
 - Node.js
 - 7-Zip (`7z` in PATH)
 - If 7-Zip is not installed, the runner will try `winget` or download a portable copy
 - Codex CLI installed (`npm i -g @openai/codex`)
 
+### Linux
+- Node.js
+- `p7zip-full` (for `7z` command)
+- Codex CLI installed (`npm i -g @openai/codex`)
+
 ## Quick Start
+
+### Windows
 1. Place your DMG in the repo root (default name `Codex.dmg`).
 2. Run:
 
@@ -29,11 +38,30 @@ Or use the shortcut launcher:
 run.cmd
 ```
 
-The script will:
+### Linux (AppImage Bundling)
+1. Place your DMG in the repo root (default name `Codex.dmg`).
+2. Run:
+
+```bash
+./scripts/bundle_linux.sh
+```
+
+The script will produce a `.AppImage` in the `dist/` directory.
+
+To run the AppImage:
+```bash
+# Ensure codex CLI is in your PATH
+./dist/Codex-1.0.0.AppImage
+```
+
+## Details
+
+The scripts will:
 - Extract the DMG to `work/`
-- Build a Windows-ready app directory
-- Auto-detect `codex.exe`
-- Launch Codex
+- Build a platform-ready app directory
+- Rebuild native modules (`better-sqlite3`, `node-pty`)
+- (Windows) Launch Codex directly
+- (Linux) Package as AppImage
 
 ## Notes
 - This is not an official OpenAI project.
