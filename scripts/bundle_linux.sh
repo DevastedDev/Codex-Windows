@@ -222,10 +222,52 @@ else
 fi
 
 # ---------------------------
+# Fix workspace: protocol in package.json (not supported by npm)
+# ---------------------------
+log "Checking for workspace: protocol in package.json..."
+cd "$APP_DIR"
+
+if grep -q '"workspace:' package.json; then
+    log "Resolving workspace: dependencies..."
+    node - <<'NODESCRIPT'
+const fs = require("fs");
+const path = require("path");
+const pkgPath = process.cwd() + "/package.json";
+const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+
+function resolveWorkspace(deps) {
+    if (!deps) return;
+    for (const [name, version] of Object.entries(deps)) {
+        if (version.startsWith("workspace:")) {
+            // Replace workspace:* or workspace:^ with latest
+            // For production use, you might want to resolve to specific versions
+            if (version === "workspace:*" || version === "workspace:^") {
+                console.log(`Resolving ${name}: ${version} -> *`);
+                deps[name] = "*";
+            } else {
+                // workspace:1.2.3 -> 1.2.3
+                const actualVersion = version.replace(/^workspace:/, "");
+                console.log(`Resolving ${name}: ${version} -> ${actualVersion}`);
+                deps[name] = actualVersion;
+            }
+        }
+    }
+}
+
+resolveWorkspace(pkg.dependencies);
+resolveWorkspace(pkg.devDependencies);
+resolveWorkspace(pkg.optionalDependencies);
+resolveWorkspace(pkg.peerDependencies);
+
+fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
+console.log("Workspace dependencies resolved.");
+NODESCRIPT
+fi
+
+# ---------------------------
 # Install electron in app directory (required by electron-builder)
 # ---------------------------
 log "Installing electron in app directory..."
-cd "$APP_DIR"
 
 # Add electron as devDependency if not already present
 if ! grep -q '"electron"' package.json 2>/dev/null || ! [ -d "node_modules/electron" ]; then
