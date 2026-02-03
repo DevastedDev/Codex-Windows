@@ -54,8 +54,32 @@ mkdir -p "$WORK_DIR"
 if [ ! -d "$EXTRACTED_DIR" ]; then
     log "Extracting DMG..."
     mkdir -p "$EXTRACTED_DIR"
-    # Redirect output to prevent spam
-    7z x "$DMG_PATH" -o"$EXTRACTED_DIR" -y > /dev/null
+    
+    # Temporarily disable set -e to handle specific 7z exit codes
+    set +e
+    ERR_LOG="$(mktemp)"
+    
+    # -snld: Store symbolic links as links
+    # We capture stderr to check for specific warnings if it fails
+    7z x "$DMG_PATH" -o"$EXTRACTED_DIR" -y -snld > /dev/null 2>"$ERR_LOG"
+    RC=$?
+    
+    # Re-enable set -e immediately
+    set -e
+
+    if [ $RC -ne 0 ]; then
+        # Check if the failure was just the standard DMG symlink issue
+        if grep -q "Dangerous link path was ignored" "$ERR_LOG"; then
+            warn "7z reported an ignored DMG Applications symlink (expected). Continuing."
+        else
+            cat "$ERR_LOG" >&2
+            rm -f "$ERR_LOG"
+            err "7z extraction failed with exit code $RC"
+            exit $RC
+        fi
+    fi
+
+    rm -f "$ERR_LOG"
 else
     log "DMG already extracted. Skipping."
 fi
