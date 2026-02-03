@@ -55,6 +55,14 @@ To run the AppImage:
 ```
 `bundle_linux.sh` will also bundle the CLI into the AppImage when `CODEX_CLI_PATH` is set or `codex` is found in your `PATH`. Otherwise, set `CODEX_CLI_PATH` before launching. 
 
+### Troubleshooting (Linux)
+- If the AppImage reports it cannot locate the Codex CLI, make sure `codex` is on your `PATH` **or** set `CODEX_CLI_PATH` to an **absolute** path to the binary. If you point `CODEX_CLI_PATH` at a directory, it must contain `codex` or `bin/codex`. For example:
+
+```bash
+export CODEX_CLI_PATH=/usr/local/bin/codex
+./dist/Codex-1.0.0.AppImage
+```
+
 ## Details
 
 The scripts will:
