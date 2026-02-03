@@ -284,26 +284,12 @@ elif command -v codex &> /dev/null; then
 fi
 
 if [ -n "$CODEX_CLI_SOURCE" ]; then
-    if [[ "$CODEX_CLI_SOURCE" == "~/"* ]]; then
-        CODEX_CLI_SOURCE="${CODEX_CLI_SOURCE/#\~/$HOME}"
-    fi
-    if [[ "$CODEX_CLI_SOURCE" != /* ]]; then
-        CODEX_CLI_SOURCE="$(pwd)/$CODEX_CLI_SOURCE"
+    if [ -d "$CODEX_CLI_SOURCE" ]; then
+        CODEX_CLI_SOURCE="$CODEX_CLI_SOURCE/codex"
     fi
 
     if command -v realpath &> /dev/null; then
         CODEX_CLI_SOURCE="$(realpath -m "$CODEX_CLI_SOURCE")"
-    elif command -v readlink &> /dev/null; then
-        CODEX_CLI_SOURCE="$(readlink -f "$CODEX_CLI_SOURCE" 2>/dev/null || echo "$CODEX_CLI_SOURCE")"
-    fi
-
-    if [ -d "$CODEX_CLI_SOURCE" ]; then
-        for candidate in "$CODEX_CLI_SOURCE/codex" "$CODEX_CLI_SOURCE/bin/codex"; do
-            if [ -f "$candidate" ]; then
-                CODEX_CLI_SOURCE="$candidate"
-                break
-            fi
-        done
     fi
 fi
 
@@ -318,7 +304,6 @@ if [ -n "$CODEX_CLI_SOURCE" ]; then
     else
         warn "CODEX_CLI_PATH was set but not found at $CODEX_CLI_SOURCE"
         warn "Tip: use an absolute path to the codex binary, e.g. /usr/local/bin/codex."
-        warn "Tip: if pointing to a directory, it must contain codex or bin/codex."
     fi
 else
     warn "Codex CLI not found in PATH and CODEX_CLI_PATH not set; AppImage will require CODEX_CLI_PATH at runtime."
