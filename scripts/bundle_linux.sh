@@ -228,39 +228,33 @@ log "Checking for workspace: protocol in package.json..."
 cd "$APP_DIR"
 
 if grep -q '"workspace:' package.json; then
-    log "Resolving workspace: dependencies..."
+    log "Removing workspace: dependencies (internal packages not on npm)..."
     node - <<'NODESCRIPT'
 const fs = require("fs");
 const path = require("path");
 const pkgPath = process.cwd() + "/package.json";
 const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
 
-function resolveWorkspace(deps) {
+function removeWorkspace(deps, depType) {
     if (!deps) return;
+    const removed = [];
     for (const [name, version] of Object.entries(deps)) {
         if (version.startsWith("workspace:")) {
-            // Replace workspace:* or workspace:^ with latest
-            // For production use, you might want to resolve to specific versions
-            if (version === "workspace:*" || version === "workspace:^") {
-                console.log(`Resolving ${name}: ${version} -> *`);
-                deps[name] = "*";
-            } else {
-                // workspace:1.2.3 -> 1.2.3
-                const actualVersion = version.replace(/^workspace:/, "");
-                console.log(`Resolving ${name}: ${version} -> ${actualVersion}`);
-                deps[name] = actualVersion;
-            }
+            console.log(`Removing ${depType} ${name}: ${version} (internal workspace package)`);
+            delete deps[name];
+            removed.push(name);
         }
     }
+    return removed;
 }
 
-resolveWorkspace(pkg.dependencies);
-resolveWorkspace(pkg.devDependencies);
-resolveWorkspace(pkg.optionalDependencies);
-resolveWorkspace(pkg.peerDependencies);
+const removedDeps = removeWorkspace(pkg.dependencies, "dependency");
+const removedDevDeps = removeWorkspace(pkg.devDependencies, "devDependency");
+const removedOptDeps = removeWorkspace(pkg.optionalDependencies, "optionalDependency");
+const removedPeerDeps = removeWorkspace(pkg.peerDependencies, "peerDependency");
 
 fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
-console.log("Workspace dependencies resolved.");
+console.log("Workspace dependencies removed.");
 NODESCRIPT
 fi
 
@@ -272,7 +266,7 @@ log "Installing electron in app directory..."
 # Add electron as devDependency if not already present
 if ! grep -q '"electron"' package.json 2>/dev/null || ! [ -d "node_modules/electron" ]; then
     log "Adding electron@$ELECTRON_VERSION to app..."
-    npm install --save-dev electron@"$ELECTRON_VERSION"
+    npm install --save-dev electron@"$ELECTRON_VERSION" --legacy-peer-deps
 fi
 
 cd "$ROOT_DIR"
