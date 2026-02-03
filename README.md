@@ -53,6 +53,7 @@ To run the AppImage:
 # Ensure codex CLI is in your PATH
 ./dist/Codex-1.0.0.AppImage
 ```
+`bundle_linux.sh` will also bundle the CLI into the AppImage when `CODEX_CLI_PATH` is set or `codex` is found in your `PATH`. Otherwise, set `CODEX_CLI_PATH` before launching. 
 
 ## Details
 
