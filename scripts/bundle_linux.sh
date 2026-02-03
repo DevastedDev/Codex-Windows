@@ -273,6 +273,32 @@ NODESCRIPT
 fi
 
 # ---------------------------
+# Bundle Codex CLI (optional)
+# ---------------------------
+log "Resolving Codex CLI for bundling..."
+CODEX_CLI_SOURCE=""
+if [ -n "${CODEX_CLI_PATH:-}" ]; then
+    CODEX_CLI_SOURCE="$CODEX_CLI_PATH"
+elif command -v codex &> /dev/null; then
+    CODEX_CLI_SOURCE="$(command -v codex)"
+fi
+
+CODEX_RESOURCES_DIR=""
+if [ -n "$CODEX_CLI_SOURCE" ]; then
+    if [ -f "$CODEX_CLI_SOURCE" ]; then
+        CODEX_RESOURCES_DIR="$WORK_DIR/codex-bin"
+        mkdir -p "$CODEX_RESOURCES_DIR"
+        cp "$CODEX_CLI_SOURCE" "$CODEX_RESOURCES_DIR/codex"
+        chmod +x "$CODEX_RESOURCES_DIR/codex"
+        log "Bundling Codex CLI from $CODEX_CLI_SOURCE"
+    else
+        warn "CODEX_CLI_PATH was set but not found at $CODEX_CLI_SOURCE"
+    fi
+else
+    warn "Codex CLI not found in PATH and CODEX_CLI_PATH not set; AppImage will require CODEX_CLI_PATH at runtime."
+fi
+
+# ---------------------------
 # Install electron in app directory (required by electron-builder)
 # ---------------------------
 log "Installing electron in app directory..."
@@ -309,6 +335,16 @@ else
 fi
 
 # Prepare config
+EXTRA_RESOURCES_CONFIG=""
+if [ -n "$CODEX_RESOURCES_DIR" ]; then
+    EXTRA_RESOURCES_CONFIG=$(cat <<EOF
+extraResources:
+  - from: ${CODEX_RESOURCES_DIR}
+    to: bin
+EOF
+)
+fi
+
 cat > "$WORK_DIR/electron-builder.yml" <<EOF
 appId: com.openai.codex
 productName: Codex
@@ -320,6 +356,7 @@ linux:
   category: Development
 npmRebuild: false
 electronVersion: ${ELECTRON_VERSION}
+${EXTRA_RESOURCES_CONFIG}
 files:
   - "**/*"
   - "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}"
