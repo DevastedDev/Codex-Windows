@@ -25,7 +25,7 @@ err() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # Check dependencies
 check_dep() {
-    if ! command -v $1 &> /dev/null; then
+    if ! command -v "$1" &> /dev/null; then
         err "$1 could not be found. Please install it."
         if [ "$1" == "7z" ]; then
              warn "On Debian/Ubuntu: sudo apt install p7zip-full"
@@ -50,41 +50,39 @@ log "Using DMG: $DMG_PATH"
 
 mkdir -p "$WORK_DIR"
 
-# Extract DMG
+# ---------------------------
+# Extract DMG (ignore macOS DMG /Applications symlink)
+# ---------------------------
 if [ ! -d "$EXTRACTED_DIR" ]; then
     log "Extracting DMG..."
     mkdir -p "$EXTRACTED_DIR"
-    
-    # Temporarily disable set -e to handle specific 7z exit codes
+
+    # Some DMGs contain a symlink like "Applications -> /Applications".
+    # Newer 7z treats that as "Dangerous link path..." and returns non-zero.
+    # -snld allows extracting those links; we also treat that specific message as a warning.
     set +e
     ERR_LOG="$(mktemp)"
-    
-    # -snld: Store symbolic links as links
-    # We capture stderr to check for specific warnings if it fails
     7z x "$DMG_PATH" -o"$EXTRACTED_DIR" -y -snld > /dev/null 2>"$ERR_LOG"
     RC=$?
-    
-    # Re-enable set -e immediately
     set -e
 
     if [ $RC -ne 0 ]; then
-        # Check if the failure was just the standard DMG symlink issue
         if grep -q "Dangerous link path was ignored" "$ERR_LOG"; then
-            warn "7z reported an ignored DMG Applications symlink (expected). Continuing."
+            warn "7z ignored DMG Applications symlink (expected). Continuing."
         else
             cat "$ERR_LOG" >&2
-            rm -f "$ERR_LOG"
             err "7z extraction failed with exit code $RC"
             exit $RC
         fi
     fi
-
     rm -f "$ERR_LOG"
 else
     log "DMG already extracted. Skipping."
 fi
 
+# ---------------------------
 # Extract ASAR
+# ---------------------------
 if [ ! -d "$APP_DIR" ]; then
     log "Extracting app.asar..."
     mkdir -p "$APP_DIR"
@@ -97,7 +95,7 @@ if [ ! -d "$APP_DIR" ]; then
         HFS_PATH=$(find "$EXTRACTED_DIR" -name "*.hfs" | head -n 1)
         if [ -n "$HFS_PATH" ]; then
             log "Found HFS image. Extracting..."
-            7z x "$HFS_PATH" -o"$EXTRACTED_DIR/hfs" -y > /dev/null
+            7z x "$HFS_PATH" -o"$EXTRACTED_DIR/hfs" -y -snld > /dev/null
             ASAR_PATH=$(find "$EXTRACTED_DIR/hfs" -name "app.asar" | head -n 1)
         fi
     fi
@@ -120,17 +118,61 @@ else
     log "App already extracted. Skipping."
 fi
 
-# Read package.json
+# ---------------------------
+# Read package.json + fix invalid version for electron-builder (must be SemVer)
+# ---------------------------
 PKG_JSON="$APP_DIR/package.json"
-ELECTRON_VERSION=$(node -p "require('$PKG_JSON').devDependencies.electron")
-BETTER_SQLITE3_VERSION=$(node -p "require('$PKG_JSON').dependencies['better-sqlite3']")
-NODE_PTY_VERSION=$(node -p "require('$PKG_JSON').dependencies['node-pty']")
 
-log "Electron Version: $ELECTRON_VERSION"
-log "better-sqlite3 Version: $BETTER_SQLITE3_VERSION"
-log "node-pty Version: $NODE_PTY_VERSION"
+PKG_VERSION="$(node -p "require('$PKG_JSON').version || ''")"
+if [ -z "$PKG_VERSION" ]; then
+    warn "package.json has no version field; setting to 0.0.0"
+    FIXED_VERSION="0.0.0"
+else
+    # Accept strict-ish semver: X.Y.Z (with optional -pre +build)
+    if [[ "$PKG_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-][0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?$ ]]; then
+        FIXED_VERSION="$PKG_VERSION"
+    else
+        # Special case seen: "260202.0859" (date.time). This fails because 0859 has a leading zero.
+        if [[ "$PKG_VERSION" =~ ^([0-9]{6})\.([0-9]{4})$ ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            # 10# removes leading zeros safely
+            MINOR=$((10#${BASH_REMATCH[2]}))
+            FIXED_VERSION="${MAJOR}.${MINOR}.0"
+        else
+            # Fallback: embed original version as build metadata on 0.0.0
+            SAFE_META="$(echo "$PKG_VERSION" | sed -E 's/[^0-9A-Za-z-]+/./g; s/^\.+//; s/\.+$//')"
+            [ -z "$SAFE_META" ] && SAFE_META="unknown"
+            FIXED_VERSION="0.0.0+${SAFE_META}"
+        fi
 
+        warn "Invalid version in package.json: \"$PKG_VERSION\" -> using \"$FIXED_VERSION\" for electron-builder"
+        node - <<NODE
+const fs = require("fs");
+const p = "$PKG_JSON";
+const j = JSON.parse(fs.readFileSync(p, "utf8"));
+j.version = "$FIXED_VERSION";
+fs.writeFileSync(p, JSON.stringify(j, null, 2));
+NODE
+    fi
+fi
+
+# Extract dependency versions (strip leading non-digits like ^ ~ >=)
+ELECTRON_VERSION_RAW=$(node -p "require('$PKG_JSON').devDependencies.electron")
+BETTER_SQLITE3_VERSION_RAW=$(node -p "require('$PKG_JSON').dependencies['better-sqlite3']")
+NODE_PTY_VERSION_RAW=$(node -p "require('$PKG_JSON').dependencies['node-pty']")
+
+ELECTRON_VERSION=$(node -p "('${ELECTRON_VERSION_RAW}').replace(/^[^0-9]*/, '')")
+BETTER_SQLITE3_VERSION=$(node -p "('${BETTER_SQLITE3_VERSION_RAW}').replace(/^[^0-9]*/, '')")
+NODE_PTY_VERSION=$(node -p "('${NODE_PTY_VERSION_RAW}').replace(/^[^0-9]*/, '')")
+
+log "App Version (fixed): $FIXED_VERSION"
+log "Electron Version: $ELECTRON_VERSION (raw: $ELECTRON_VERSION_RAW)"
+log "better-sqlite3 Version: $BETTER_SQLITE3_VERSION (raw: $BETTER_SQLITE3_VERSION_RAW)"
+log "node-pty Version: $NODE_PTY_VERSION (raw: $NODE_PTY_VERSION_RAW)"
+
+# ---------------------------
 # Build native modules
+# ---------------------------
 if [ ! -d "$NATIVE_BUILD_DIR" ]; then
     log "Building native modules..."
     mkdir -p "$NATIVE_BUILD_DIR"
@@ -153,23 +195,23 @@ else
     log "Native builds directory exists. Skipping rebuild (delete $NATIVE_BUILD_DIR to force)."
 fi
 
+# ---------------------------
 # Copy native modules
+# ---------------------------
 log "Copying native modules to app..."
 
 # better-sqlite3
-# Ensure destination exists
 mkdir -p "$APP_DIR/node_modules/better-sqlite3/build/Release"
-cp "$NATIVE_BUILD_DIR/node_modules/better-sqlite3/build/Release/better_sqlite3.node" "$APP_DIR/node_modules/better-sqlite3/build/Release/"
+cp "$NATIVE_BUILD_DIR/node_modules/better-sqlite3/build/Release/better_sqlite3.node" \
+   "$APP_DIR/node_modules/better-sqlite3/build/Release/"
 
 # node-pty
-# Ensure destination exists
 mkdir -p "$APP_DIR/node_modules/node-pty/build/Release"
-# Copy pty.node (Linux main binary)
 if [ -f "$NATIVE_BUILD_DIR/node_modules/node-pty/build/Release/pty.node" ]; then
-    cp "$NATIVE_BUILD_DIR/node_modules/node-pty/build/Release/pty.node" "$APP_DIR/node_modules/node-pty/build/Release/"
+    cp "$NATIVE_BUILD_DIR/node_modules/node-pty/build/Release/pty.node" \
+       "$APP_DIR/node_modules/node-pty/build/Release/"
 else
     warn "pty.node not found in build/Release. Checking prebuilds..."
-    # Sometimes it might be in prebuilds/linux-x64/pty.node depending on version
     PTY_FOUND=$(find "$NATIVE_BUILD_DIR/node_modules/node-pty" -name "pty.node" | head -n 1)
     if [ -n "$PTY_FOUND" ]; then
         cp "$PTY_FOUND" "$APP_DIR/node_modules/node-pty/build/Release/"
@@ -179,13 +221,14 @@ else
     fi
 fi
 
+# ---------------------------
 # Bundle with electron-builder
+# ---------------------------
 log "Bundling AppImage..."
 mkdir -p "$DIST_DIR"
 
 # We need to install electron-builder if not present
 if ! command -v electron-builder &> /dev/null; then
-    # Install locally in a temp dir to use npx or direct path
     BUILDER_DIR="$WORK_DIR/builder"
     if [ ! -f "$BUILDER_DIR/node_modules/.bin/electron-builder" ]; then
         log "Installing electron-builder..."
@@ -231,7 +274,8 @@ EOF
 
 # Run builder
 log "Running electron-builder..."
-"$BUILDER" build --config "$WORK_DIR/electron-builder.yml" --linux
+# --publish never prevents CI autodetect from trying to publish artifacts/releases
+"$BUILDER" build --config "$WORK_DIR/electron-builder.yml" --linux --publish never
 
 log "Done! AppImage is in $DIST_DIR"
 log "Note: You must have 'codex' CLI installed and in your PATH, or set CODEX_CLI_PATH environment variable before running the AppImage."
