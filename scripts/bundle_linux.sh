@@ -222,6 +222,20 @@ else
 fi
 
 # ---------------------------
+# Install electron in app directory (required by electron-builder)
+# ---------------------------
+log "Installing electron in app directory..."
+cd "$APP_DIR"
+
+# Add electron as devDependency if not already present
+if ! grep -q '"electron"' package.json 2>/dev/null || ! [ -d "node_modules/electron" ]; then
+    log "Adding electron@$ELECTRON_VERSION to app..."
+    npm install --save-dev electron@"$ELECTRON_VERSION"
+fi
+
+cd "$ROOT_DIR"
+
+# ---------------------------
 # Bundle with electron-builder
 # ---------------------------
 log "Bundling AppImage..."
@@ -254,6 +268,7 @@ linux:
   target: AppImage
   category: Development
 npmRebuild: false
+electronVersion: ${ELECTRON_VERSION}
 files:
   - "**/*"
   - "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}"
