@@ -277,20 +277,69 @@ fi
 # ---------------------------
 log "Resolving Codex CLI for bundling..."
 CODEX_CLI_SOURCE=""
-if [ -n "${CODEX_CLI_PATH:-}" ]; then
-    CODEX_CLI_SOURCE="$CODEX_CLI_PATH"
-elif command -v codex &> /dev/null; then
-    CODEX_CLI_SOURCE="$(command -v codex)"
-fi
-
-if [ -n "$CODEX_CLI_SOURCE" ]; then
-    if [ -d "$CODEX_CLI_SOURCE" ]; then
-        CODEX_CLI_SOURCE="$CODEX_CLI_SOURCE/codex"
+resolve_codex_cli() {
+    local source=""
+    if [ -n "${CODEX_CLI_PATH:-}" ]; then
+        source="$CODEX_CLI_PATH"
+    elif command -v codex &> /dev/null; then
+        source="$(command -v codex)"
     fi
 
-    if command -v realpath &> /dev/null; then
-        CODEX_CLI_SOURCE="$(realpath -m "$CODEX_CLI_SOURCE")"
+    if [ -n "$source" ] && [ -d "$source" ]; then
+        source="$source/codex"
     fi
+
+    if [ -n "$source" ] && [ -f "$source" ]; then
+        case "$source" in
+            *.cmd|*.ps1|*.exe)
+                warn "Ignoring Windows Codex CLI wrapper at $source (need Linux binary)."
+                source=""
+                ;;
+        esac
+    fi
+
+    if [ -n "$source" ] && [ -f "$source" ]; then
+        echo "$source"
+        return 0
+    fi
+
+    if command -v npm &> /dev/null; then
+        local npm_root
+        npm_root="$(npm root -g 2>/dev/null || true)"
+        if [ -n "$npm_root" ]; then
+            local triples=(
+                "x86_64-unknown-linux-gnu"
+                "x86_64-unknown-linux-musl"
+                "aarch64-unknown-linux-gnu"
+                "aarch64-unknown-linux-musl"
+            )
+            for triple in "${triples[@]}"; do
+                local candidate="$npm_root/@openai/codex/vendor/$triple/codex/codex"
+                if [ -f "$candidate" ]; then
+                    echo "$candidate"
+                    return 0
+                fi
+            done
+
+            local vendor_dir="$npm_root/@openai/codex/vendor"
+            if [ -d "$vendor_dir" ]; then
+                local found
+                found="$(find "$vendor_dir" -maxdepth 4 -type f -path "*/codex/codex" 2>/dev/null | head -n 1)"
+                if [ -n "$found" ]; then
+                    echo "$found"
+                    return 0
+                fi
+            fi
+        fi
+    fi
+
+    echo ""
+}
+
+CODEX_CLI_SOURCE="$(resolve_codex_cli)"
+
+if [ -n "$CODEX_CLI_SOURCE" ] && command -v realpath &> /dev/null; then
+    CODEX_CLI_SOURCE="$(realpath -m "$CODEX_CLI_SOURCE")"
 fi
 
 CODEX_RESOURCES_DIR=""
@@ -306,7 +355,7 @@ if [ -n "$CODEX_CLI_SOURCE" ]; then
         warn "Tip: use an absolute path to the codex binary, e.g. /usr/local/bin/codex."
     fi
 else
-    warn "Codex CLI not found in PATH and CODEX_CLI_PATH not set; AppImage will require CODEX_CLI_PATH at runtime."
+    warn "Codex CLI not found in PATH or npm global install; AppImage will require CODEX_CLI_PATH at runtime."
 fi
 
 # ---------------------------
