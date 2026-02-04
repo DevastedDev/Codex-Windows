@@ -47,6 +47,7 @@ run.cmd
 ```
 
 The script will produce a `.AppImage` in the `dist/` directory.
+It patches `app.asar` before extraction so the final AppImage includes the webview fixes.
 
 To run the AppImage:
 ```bash
@@ -54,6 +55,16 @@ To run the AppImage:
 ./dist/Codex-1.0.0.AppImage
 ```
 `bundle_linux.sh` will also bundle the CLI into the AppImage when `CODEX_CLI_PATH` is set or `codex` is found in your `PATH`. Otherwise, set `CODEX_CLI_PATH` before launching. 
+
+### Linux (Patch app.asar)
+If you want to patch the Linux build (for example, after extracting an AppImage), use:
+
+```bash
+./Codex-*.AppImage --appimage-extract
+python3 scripts/patch_linux.py --asar squashfs-root/resources/app.asar
+```
+
+The script will back up the original `app.asar` and write a patched copy in place.
 
 ### Troubleshooting (Linux)
 - If the AppImage reports it cannot locate the Codex CLI, make sure `codex` is on your `PATH` **or** set `CODEX_CLI_PATH` to an **absolute** path to the binary (not a directory). For example:

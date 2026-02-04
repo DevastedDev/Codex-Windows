@@ -39,6 +39,7 @@ check_dep() {
 check_dep node
 check_dep npm
 check_dep 7z
+check_dep python3
 
 if [ ! -f "$DMG_PATH" ]; then
     err "DMG not found at $DMG_PATH"
@@ -106,6 +107,10 @@ if [ ! -d "$APP_DIR" ]; then
     fi
 
     log "Found app.asar at $ASAR_PATH"
+
+    log "Patching app.asar before extraction..."
+    python3 "$ROOT_DIR/scripts/patch_linux.py" --asar "$ASAR_PATH" --no-beautify --no-node-check
+
     npx --yes @electron/asar extract "$ASAR_PATH" "$APP_DIR"
 
     # Sync app.asar.unpacked if exists
