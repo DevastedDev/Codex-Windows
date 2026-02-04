@@ -150,6 +150,11 @@ def main() -> int:
         action="store_true",
         help="Do not delete the extracted folder (for manual inspection).",
     )
+    parser.add_argument(
+        "--no-node-check",
+        action="store_true",
+        help="Skip `node --check` (useful when the bundle is ESM-only).",
+    )
     args = parser.parse_args()
 
     app_asar = Path(args.asar).expanduser() if args.asar else find_default_asar()
@@ -279,7 +284,8 @@ def main() -> int:
             return 0
 
         bundle.write_text(text, "utf-8")
-        run_checked("node", "--check", str(bundle))
+        if not args.no_node_check:
+            run_checked("node", "--check", str(bundle))
 
         if not args.no_beautify:
             beautified = bundle.with_suffix(".beautified.js")

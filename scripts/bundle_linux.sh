@@ -109,7 +109,7 @@ if [ ! -d "$APP_DIR" ]; then
     log "Found app.asar at $ASAR_PATH"
 
     log "Patching app.asar before extraction..."
-    python3 "$ROOT_DIR/scripts/patch_linux.py" --asar "$ASAR_PATH" --no-beautify
+    python3 "$ROOT_DIR/scripts/patch_linux.py" --asar "$ASAR_PATH" --no-beautify --no-node-check
 
     npx --yes @electron/asar extract "$ASAR_PATH" "$APP_DIR"
 
